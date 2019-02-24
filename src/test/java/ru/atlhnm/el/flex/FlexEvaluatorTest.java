@@ -17,6 +17,13 @@ class FlexEvaluatorTest {
     }
 
     @Test
+    @DisplayName("-1.123")
+    void minusOneCommaOneTwoThree() {
+        var result = flexEvaluator.evaluate("-1.123");
+        assertEquals(-1.123, result.get());
+    }
+
+    @Test
     @DisplayName("2 + 2")
     void twoPlusTwo() {
         var result = flexEvaluator.evaluate("2 + 2");
@@ -30,5 +37,26 @@ class FlexEvaluatorTest {
         assertEquals(0, result.get());
     }
 
+    @Test
+    @DisplayName("2 - 2")
+    void twoMinusTwo() {
+        var result = flexEvaluator.evaluate("2 - 2");
+        assertEquals(0, result.get());
+    }
+
+    @Test
+    @DisplayName("2 - 2 + 2")
+    void twoMinusTwoPlusTwo() {
+        var result = flexEvaluator.evaluate("2 - 2 + 2");
+        assertEquals(2, result.get());
+    }
+
+
+    @Test
+    @DisplayName("-2 - -2 + -2")
+    void minusTwoMinusMinusTwoPlusMinusTwo() {
+        var result = flexEvaluator.evaluate("-2 - -2 + -2");
+        assertEquals(-2, result.get());
+    }
 
 }
