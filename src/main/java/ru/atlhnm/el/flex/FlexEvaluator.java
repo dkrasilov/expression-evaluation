@@ -1,54 +1,103 @@
 package ru.atlhnm.el.flex;
 
 import io.vavr.Tuple2;
+import io.vavr.collection.List;
 import io.vavr.control.Option;
 import io.vavr.control.Try;
 
+import java.util.stream.Stream;
+
 class FlexEvaluator {
     Try<Double> evaluate(String expression) {
-        return Try.of(() -> eval(expression));
-
+        return Try.of(() -> evalNested(expression));
     }
 
-    private Double eval(String expression) {
-        final Option<Double> plusResult = findOperationPosition(Operation.PLUS, expression)
-                .map(pos -> splitAt(expression, pos))
-                .map(operands -> eval(operands._1) + eval(operands._2));
+    private Double evalNested(String baseExpressionString) {
+        final var expression = unwrapBrackets(baseExpressionString);
 
-        final Option<Double> minusResult = plusResult.orElse(() ->
-                findOperationPosition(Operation.MINUS, expression)
-                        .map(pos -> splitAt(expression, pos))
-                        .map(operands -> eval(operands._1) - eval(operands._2))
-        );
+        return tryEvalOperation(expression, Operation.PLUS)
+                .orElse(() -> tryEvalOperation(expression, Operation.MINUS))
+                .orElse(() -> {
+                    //if we here there is no operations to do except [*/] and no nested values
+                    final var operations = findOperationsOrdered(expression, Operation.DIVIDE, Operation.MULTIPLY);
+                    if (operations.isEmpty())
+                        return Option.none();
 
-        return minusResult.getOrElse(() -> Double.parseDouble(expression));
+                    final var operands = List.of(expression.split("[*/]")).map(Double::parseDouble);
+                    final Double finalResult = operands.zip(operations.prepend(Operation.MULTIPLY))
+                            .foldLeft(1.0, (result, operationNextOperandTuple) -> {
+                                final Double operand = operationNextOperandTuple._1;
+                                switch (operationNextOperandTuple._2) {
+                                    case DIVIDE:
+                                        return result / operand;
+                                    case MULTIPLY:
+                                        return result * operand;
+                                    default:
+                                        throw new IllegalStateException();
+                                }
+                            });
+                    return Option.of(finalResult);
+                })
+                .getOrElse(() -> Double.parseDouble(expression));
     }
 
-    private Tuple2<String, String> splitAt(String expression, int pos) {
-        var left = expression.substring(0, pos);
-        var right = expression.substring(pos + 1);
-        return new Tuple2<>(left, right);
-    }
+    private String unwrapBrackets(String expr) {
+        final int openBracketIndex = expr.indexOf("(");
+        if (openBracketIndex == -1)
+            return expr;
 
-    private Option<Integer> findOperationPosition(Operation operation, String s) {
-        switch (operation) {
-            case PLUS:
-                return Option.of(s.indexOf(Operation.PLUS.c)).filter(i -> i != -1);
-            case MINUS:
-                var minusPosition = s.indexOf(Operation.MINUS.c);
-                while (minusPosition != -1) {
-                    if (!s.substring(0, minusPosition).isBlank()) {
-                        return Option.of(minusPosition);
-                    }
-                    minusPosition = s.indexOf(Operation.MINUS.c, minusPosition + 1);
-                }
-                return Option.none();
-            case MULTIPLY:
-                return Option.none();
-            case DIVIDE:
-                return Option.none();
+        int openCloseBalance = 1;
+        for (int i = openBracketIndex + 1; i < expr.length(); i++) {
+            if (expr.charAt(i) == ')')
+                openCloseBalance--;
+            if (expr.charAt(i) == '(')
+                openCloseBalance++;
+
+            if (openCloseBalance == 0) {
+                final String expressionInBrackets = expr.substring(openBracketIndex + 1, i);
+                return expr.substring(0, openBracketIndex) + evalNested(expressionInBrackets) +
+                        expr.substring(i + 1);
+            }
         }
-        throw new IllegalArgumentException(String.format("No such operation %s", operation));
+        throw new IllegalStateException();
+    }
+
+    private List<Operation> findOperationsOrdered(String s, Operation... operations) {
+        final var indexes = Stream.of(operations)
+                .flatMap(operation ->
+                        Stream.iterate(s.indexOf(operation.c),
+                                i -> i != -1,
+                                index -> s.indexOf(operation.c, index + 1))
+                                .map(i -> new Tuple2<>(i, operation)));
+        return List.ofAll(indexes).sortBy(tuple -> tuple._1).map(tuple -> tuple._2);
+    }
+
+    private Option<Double> tryEvalOperation(String expr, Operation operation) {
+        return Option.of(expr)
+                .flatMap(s -> {
+                    switch (operation) {
+                        case MINUS:
+                            //todo fix 2 * -2 - should return none
+                            var minusPosition = expr.indexOf(operation.c);
+                            while (minusPosition != -1) {
+                                if (!expr.substring(0, minusPosition).isBlank()) {
+                                    return Option.of(minusPosition);
+                                }
+                                minusPosition = expr.indexOf(operation.c, minusPosition + 1);
+                            }
+                            return Option.none();
+                        case PLUS:
+                        case MULTIPLY:
+                        case DIVIDE:
+                            return Option.of(expr.indexOf(operation.c)).filter(i -> i != -1);
+                    }
+                    throw new IllegalArgumentException(String.format("No such operation %s", operation));
+                })
+                .map(pos -> {
+                    var x = expr.substring(0, pos);
+                    var y = expr.substring(pos + 1);
+                    return operation.eval(evalNested(x), evalNested(y));
+                });
     }
 
     private enum Operation {
@@ -57,6 +106,20 @@ class FlexEvaluator {
 
         Operation(char c) {
             this.c = c;
+        }
+
+        double eval(double x, double y) {
+            switch (this) {
+                case PLUS:
+                    return x + y;
+                case MINUS:
+                    return x - y;
+                case MULTIPLY:
+                    return x * y;
+                case DIVIDE:
+                    return y == 0.0D ? 0.0D / 0.0 : x / y;
+            }
+            throw new IllegalStateException();
         }
     }
 }
