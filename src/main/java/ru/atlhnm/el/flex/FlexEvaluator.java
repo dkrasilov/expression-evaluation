@@ -26,16 +26,10 @@ class FlexEvaluator {
 
                     final var operands = List.of(expression.split("[*/]")).map(Double::parseDouble);
                     final Double finalResult = operands.zip(operations.prepend(Operation.MULTIPLY))
-                            .foldLeft(1.0, (result, operationNextOperandTuple) -> {
-                                final Double operand = operationNextOperandTuple._1;
-                                switch (operationNextOperandTuple._2) {
-                                    case DIVIDE:
-                                        return result / operand;
-                                    case MULTIPLY:
-                                        return result * operand;
-                                    default:
-                                        throw new IllegalStateException();
-                                }
+                            .foldLeft(1.0, (result, operandOperationTuple) -> {
+                                var operand = operandOperationTuple._1;
+                                var operation = operandOperationTuple._2;
+                                return operation.eval(result, operand);
                             });
                     return Option.of(finalResult);
                 })
@@ -91,11 +85,10 @@ class FlexEvaluator {
                             }
                             return Option.none();
                         case PLUS:
-                        case MULTIPLY:
-                        case DIVIDE:
                             return Option.of(expr.indexOf(operation.c)).filter(i -> i != -1);
+                        default:
+                            throw new IllegalArgumentException(String.format("Illegal operation %s", operation));
                     }
-                    throw new IllegalArgumentException(String.format("No such operation %s", operation));
                 })
                 .map(pos -> {
                     var x = expr.substring(0, pos);
