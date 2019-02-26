@@ -2,6 +2,7 @@ package ru.atlhnm.el.flex;
 
 import io.vavr.Tuple2;
 import io.vavr.collection.List;
+import io.vavr.collection.TreeSet;
 import io.vavr.control.Option;
 import io.vavr.control.Try;
 
@@ -77,11 +78,14 @@ class FlexEvaluator {
                 .flatMap(s -> {
                     switch (operation) {
                         case MINUS:
-                            //todo fix 2 * -2 - should return none
                             var minusPosition = expr.indexOf(operation.c);
                             while (minusPosition != -1) {
-                                if (!expr.substring(0, minusPosition).isBlank()) {
-                                    return Option.of(minusPosition);
+                                final String leftPart = expr.substring(0, minusPosition).trim();
+                                if (!leftPart.isBlank()) {
+                                    char lastChar = leftPart.charAt(leftPart.length() - 1);
+                                    var ops = TreeSet.of(Operation.values()).map(operation1 -> operation1.c);
+                                    if (!ops.contains(lastChar))
+                                        return Option.of(minusPosition);
                                 }
                                 minusPosition = expr.indexOf(operation.c, minusPosition + 1);
                             }
@@ -117,7 +121,7 @@ class FlexEvaluator {
                 case MULTIPLY:
                     return x * y;
                 case DIVIDE:
-                    return y == 0.0D ? 0.0D / 0.0 : x / y;
+                    return y == 0.0D ? Double.NaN : x / y;
             }
             throw new IllegalStateException();
         }
